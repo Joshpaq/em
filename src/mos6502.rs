@@ -37,6 +37,14 @@ const SYNC: u64 = 1 << 25; // hi when starting new instruction (out)
 const IRQ: u64 = 1 << 26; // hi to request irq (in)
 const NMI: u64 = 1 << 27;  // hi to request nmi (in)
 
+// flags
+const CARRY: u8 = 1 << 0;
+const ZERO: u8 = 1 << 1;
+const IRQ_DISABLE: u8 = 1 << 2;
+const DECIMAL: u8 = 1 << 3;
+const OVERFLOW: u8 = 1 << 6;
+const NEGATIVE: u8 = 1 << 7;
+
 pub struct Mos6502 {
   pins: u64,
   a: u8,
@@ -49,25 +57,35 @@ pub struct Mos6502 {
 
 impl fmt::Display for Mos6502 {
   fn fmt (&self, f: &mut fmt::Formatter) -> fmt::Result {
-      write!(f, "A: {:#04x} X: {:#04x} Y: {:#04x} S: {:#04x} P: {:#010b} PC: {:#06x} ADDR: {:#06x} DATA: {:#04x}", self.a, self.x, self.y, self.s, self.p, self.pc, self.read_addr(), self.read_data())
+      write!(f, "A: {:#04x} X: {:#04x} Y: {:#04x} S: {:#04x} P: {:#04x} ({:#010b}) PC: {:#06x} ADDR: {:#06x} DATA: {:#04x} SYNC: {}", self.a, self.x, self.y, self.s, self.p, self.p, self.pc, self.read_addr(), self.read_data(), self.read_sync())
   }
 }
 
 impl Mos6502 {
   pub fn new() -> Mos6502 {
     Mos6502 {
-      pins: 0,
+      pins: SYNC,
       a: 0,
       x: 0,
       y: 0,
       s: 0,
-      p: 0,
+      p: ZERO,
       pc: 0
     }
   }
 
-  pub fn step(&self) {
+  fn set(&mut self, mask: u64) {
+    self.pins &= !mask;
+  }
 
+  fn clear(&mut self, mask: u64) {
+    self.pins &= !mask;
+  }
+
+  pub fn step(&mut self) {
+    if self.read_sync() == 1 {
+      self.clear(SYNC);
+    }
   }
 
   pub fn read_addr(&self) -> u16 {
@@ -75,11 +93,11 @@ impl Mos6502 {
   }
 
   pub fn read_data(&self) -> u8 {
-    (self.pins & DATA_MASK >> 16) as u8
+    ((self.pins & DATA_MASK) >> 16) as u8
   }
 
   pub fn set_data(&mut self, data: u8) {
-    self.pins = self.pins & !DATA_MASK;
+    self.pins = (self.pins & !DATA_MASK) | (data as u64) << 16;
   }
 
   pub fn read_rw(&self) -> u8 {
@@ -91,10 +109,10 @@ impl Mos6502 {
   }
 
   pub fn set_irq(&mut self) {
-    self.pins = self.pins | IRQ;
+    self.set(IRQ);
   }
 
   pub fn set_nmi(&mut self) {
-    self.pins = self.pins | NMI;
+    self.set(NMI);
   }
  }
