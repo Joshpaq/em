@@ -52,7 +52,9 @@ pub struct Mos6502 {
   y: u8,
   s: u8,
   p: u8,
-  pc: u16
+  pc: u16,
+  ir: u8, // instruction register
+  ic: u8 // instruction count
 }
 
 impl fmt::Display for Mos6502 {
@@ -70,7 +72,9 @@ impl Mos6502 {
       y: 0,
       s: 0,
       p: ZERO,
-      pc: 0
+      pc: 0,
+      ir: 0,
+      ic: 0
     }
   }
 
@@ -80,12 +84,6 @@ impl Mos6502 {
 
   fn clear(&mut self, mask: u64) {
     self.pins &= !mask;
-  }
-
-  pub fn step(&mut self) {
-    if self.read_sync() == 1 {
-      self.clear(SYNC);
-    }
   }
 
   pub fn read_addr(&self) -> u16 {
@@ -114,5 +112,20 @@ impl Mos6502 {
 
   pub fn set_nmi(&mut self) {
     self.set(NMI);
+  }
+
+  pub fn step(&mut self) {
+    if self.read_sync() == 1 {
+      self.ir = self.read_data();
+      self.ic = 0;
+      self.clear(SYNC);
+    }
+
+    self.set(RW); // read by default
+
+    match (self.ir, self.ic) {
+      (0x00, 0) => "",
+      _ => panic!("Unhanlded instruction {:#04x}", self.ir)
+    };
   }
  }
