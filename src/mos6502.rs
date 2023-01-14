@@ -45,16 +45,22 @@ const DECIMAL: u8 = 1 << 3;
 const OVERFLOW: u8 = 1 << 6;
 const NEGATIVE: u8 = 1 << 7;
 
+//
+const NMI_VECTOR: u16 = 0xFFFA;
+const RESET_VECTOR: u16 = 0xFFFC;
+const BRK_IRQ_VECTOR: u16 = 0xFFFE;
+
 pub struct Mos6502 {
-  pins: u64,
+  pins: u64, // addr, data, and control pins
   a: u8,
   x: u8,
   y: u8,
-  s: u8,
-  p: u8,
-  pc: u16,
+  s: u8, // stack pointer
+  p: u8, // status
+  pc: u16, // program counter
   ir: u8, // instruction register
-  ic: u8 // instruction count
+  ic: u8, // instruction count, used to keep track of which cycle we are on in the instruction
+  ad: u16 // adh/adl internal address bus
 }
 
 impl fmt::Display for Mos6502 {
@@ -69,12 +75,13 @@ impl Mos6502 {
       pins: SYNC,
       a: 0,
       x: 0,
-      y: 0,
+      y: 0, 
       s: 0,
       p: ZERO,
       pc: 0,
       ir: 0,
-      ic: 0
+      ic: 0, 
+      ad: 0 
     }
   }
 
@@ -88,6 +95,10 @@ impl Mos6502 {
 
   pub fn read_addr(&self) -> u16 {
     (self.pins & ADDR_MASK) as u16
+  }
+
+  fn set_addr(&mut self, data: u16) {
+    self.pins = (self.pins & !ADDR_MASK) | data as u64
   }
 
   pub fn read_data(&self) -> u8 {
@@ -124,8 +135,46 @@ impl Mos6502 {
     self.set(RW); // read by default
 
     match (self.ir, self.ic) {
-      (0x00, 0) => "",
+      (0x00, 0) => { self.set_addr(self.pc) },
+      (0x00, 1) => { 
+        if true { self.pc += 1 } // if NOT IRQ or NMI, TODO: impl 
+        self.s = self.s.wrapping_sub(1);
+        self.set_addr(self.s as u16 | 0x0100);
+        self.set_data((self.pc >> 8) as u8); // store pc hi
+        if false { self.clear(RW) } // if IRQ or NMI, TODO: impl 
+      },
+      (0x00, 2) => {
+        self.s = self.s.wrapping_sub(1);
+        self.set_addr(self.s as u16 | 0x0100);
+        self.set_data(self.pc as u8);  // store pc lo
+        if false { self.clear(RW) } // if IRQ or NMI, TODO: impl 
+      },
+      (0x00, 3) => {
+        self.s = self.s.wrapping_sub(1);
+        self.set_addr(self.s as u16 | 0x0100);
+        self.set_data(self.p);  // store p TODO: do I need (| 1 << 5)
+        if true {
+          self.ad = RESET_VECTOR;
+        } else { // if IRQ or NMI, TODO: impl
+          // TODO: check and set addr vecotr based on NMI vs IRQ
+          self.clear(RW)
+        }
+      },
+      (0x00, 4) => {
+        self.set_addr(self.ad);
+        self.ad += 1;
+      },
+      (0x00, 5) => {
+        self.set_addr(self.ad);
+        self.ad = self.read_data() as u16; // fetch pc lo from vector
+      },
+      (0x00, 6) => {
+        self.pc = (self.read_data() as u16) << 8 | self.ad; // fetch pc hi from vector + 1 and combine with pc lo
+        // TODO: fetch next opcode
+      }
       _ => panic!("Unhanlded instruction {:#04x}", self.ir)
     };
+
+    self.ic += 1;
   }
  }
